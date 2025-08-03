@@ -1,0 +1,255 @@
+*---------------------------------------------------------------------*
+* Report  ZFLIGHT_PROJECT
+* Combined Flight Reports using SFLIGHT
+*---------------------------------------------------------------------*
+REPORT zflight_project.
+
+TABLES: sflight.
+
+SELECTION-SCREEN BEGIN OF BLOCK b1 WITH FRAME TITLE TEXT-001.
+PARAMETERS: r1 RADIOBUTTON GROUP g1 DEFAULT 'X',
+            r2 RADIOBUTTON GROUP g1,
+            r3 RADIOBUTTON GROUP g1,
+            r4 RADIOBUTTON GROUP g1,
+            r5 RADIOBUTTON GROUP g1.
+SELECTION-SCREEN END OF BLOCK b1.
+
+PARAMETERS: p_date TYPE sflight-fldate MODIF ID d1 OBLIGATORY DEFAULT sy-datum.
+
+AT SELECTION-SCREEN OUTPUT.
+  LOOP AT SCREEN.
+    IF screen-group1 = 'D1'.
+      IF r5 = 'X'.
+        screen-active = '0'.   " Hide p_date if R5 selected
+      ELSE.
+        screen-active = '1'.   " Show p_date for R1–R4
+      ENDIF.
+      MODIFY SCREEN.
+    ENDIF.
+  ENDLOOP.
+
+
+* Text symbols:
+* 001 Choose Report Type
+
+*---------------------------------------------------------------------*
+* 1. Flight Booking Analyzer
+*---------------------------------------------------------------------*
+FORM flight_analyzer.
+  TYPES: BEGIN OF ty_summary,
+           carrid        TYPE sflight-carrid,
+           total_revenue TYPE p DECIMALS 2,
+           total_price   TYPE p DECIMALS 2,
+           count_flights TYPE i,
+           utilization   TYPE p DECIMALS 2,
+         END OF ty_summary.
+
+  DATA: it_flights TYPE TABLE OF sflight,
+        it_summary TYPE TABLE OF ty_summary,
+        wa_flight  TYPE sflight,
+        wa_summary TYPE ty_summary,
+        util       TYPE p DECIMALS 2,
+        avg_price  TYPE p DECIMALS 2,
+        avg_util   TYPE p DECIMALS 2.
+
+  SELECT * FROM sflight INTO TABLE it_flights.
+
+  LOOP AT it_flights INTO wa_flight.
+    IF wa_flight-seatsmax > 0.
+      util = wa_flight-seatsocc * 100 / wa_flight-seatsmax.
+    ELSE.
+      util = 0.
+    ENDIF.
+
+    READ TABLE it_summary INTO wa_summary WITH KEY carrid = wa_flight-carrid.
+    IF sy-subrc = 0.
+      wa_summary-total_revenue = wa_summary-total_revenue + wa_flight-paymentsum.
+      wa_summary-total_price   = wa_summary-total_price   + wa_flight-price.
+      wa_summary-count_flights = wa_summary-count_flights + 1.
+      wa_summary-utilization   = wa_summary-utilization + util.
+
+      MODIFY it_summary FROM wa_summary
+        TRANSPORTING total_revenue total_price count_flights utilization
+        WHERE carrid = wa_summary-carrid.
+    ELSE.
+      CLEAR wa_summary.
+      wa_summary-carrid        = wa_flight-carrid.
+      wa_summary-total_revenue = wa_flight-paymentsum.
+      wa_summary-total_price   = wa_flight-price.
+      wa_summary-count_flights = 1.
+      wa_summary-utilization   = util.
+      APPEND wa_summary TO it_summary.
+    ENDIF.
+  ENDLOOP.
+
+  WRITE: / '--- Flight Booking Analyzer ---'.
+  ULINE.
+  LOOP AT it_summary INTO wa_summary.
+    IF wa_summary-count_flights > 0.
+      avg_price = wa_summary-total_price / wa_summary-count_flights.
+      avg_util  = wa_summary-utilization / wa_summary-count_flights.
+    ELSE.
+      avg_price = 0.
+      avg_util  = 0.
+    ENDIF.
+
+    WRITE: / 'Carrier:', wa_summary-carrid,
+           ' Revenue:', wa_summary-total_revenue,
+           ' Avg Price:', avg_price,
+           ' Avg Util %:', avg_util.
+  ENDLOOP.
+ENDFORM.
+
+*---------------------------------------------------------------------*
+* 2. Flight Availability Checker
+*---------------------------------------------------------------------*
+FORM flight_checker.
+  DATA: it_flights TYPE TABLE OF sflight,
+        wa_flight  TYPE sflight,
+        avail TYPE i,
+        found TYPE abap_bool.
+
+  SELECT * FROM sflight INTO TABLE it_flights.
+
+  WRITE: / '--- Flight Availability Checker ---'.
+  ULINE.
+
+  found = abap_false.
+  LOOP AT it_flights INTO wa_flight.
+    IF wa_flight-fldate = p_date.
+      found = abap_true.
+      IF wa_flight-seatsocc >= wa_flight-seatsmax.
+        WRITE: / 'Flight', wa_flight-carrid, wa_flight-connid, 'is FULLY BOOKED'.
+      ELSE.
+        avail = wa_flight-seatsmax - wa_flight-seatsocc.
+        WRITE: / 'Flight', wa_flight-carrid, wa_flight-connid,
+               ' Available Seats:', avail.
+      ENDIF.
+    ENDIF.
+  ENDLOOP.
+
+  IF found = abap_false.
+    WRITE: / 'No flights found for date', p_date.
+  ENDIF.
+ENDFORM.
+
+*---------------------------------------------------------------------*
+* 3. Top 5 Flights by Revenue
+*---------------------------------------------------------------------*
+FORM top5_flights.
+  DATA: it_flights TYPE TABLE OF sflight,
+        wa_flight  TYPE sflight,
+        counter TYPE i.
+
+  SELECT * FROM sflight INTO TABLE it_flights.
+  SORT it_flights BY paymentsum DESCENDING.
+
+  WRITE: / '--- Top 5 Flights by Revenue ---'.
+  ULINE.
+  counter = 0.
+  LOOP AT it_flights INTO wa_flight.
+    counter = counter + 1.
+    WRITE: / 'Carrier:', wa_flight-carrid,
+           ' ConnID:', wa_flight-connid,
+           ' Revenue:', wa_flight-paymentsum.
+    IF counter >= 5.
+      EXIT.
+    ENDIF.
+  ENDLOOP.
+ENDFORM.
+
+*---------------------------------------------------------------------*
+* 4. Monthly Flight Statistics
+*---------------------------------------------------------------------*
+FORM monthly_stats.
+  TYPES: BEGIN OF ty_stats,
+           year  TYPE i,
+           month TYPE i,
+           total_passengers TYPE i,
+           total_revenue    TYPE p DECIMALS 2,
+         END OF ty_stats.
+
+  DATA: it_flights TYPE TABLE OF sflight,
+        wa_flight  TYPE sflight,
+        it_stats   TYPE TABLE OF ty_stats,
+        wa_stats   TYPE ty_stats,
+        ls_existing TYPE ty_stats.
+
+  SELECT * FROM sflight INTO TABLE it_flights.
+
+  LOOP AT it_flights INTO wa_flight.
+    wa_stats-year  = wa_flight-fldate+0(4).
+    wa_stats-month = wa_flight-fldate+4(2).
+
+    READ TABLE it_stats INTO ls_existing
+         WITH KEY year = wa_stats-year month = wa_stats-month.
+    IF sy-subrc = 0.
+      ls_existing-total_passengers = ls_existing-total_passengers + wa_flight-seatsocc.
+      ls_existing-total_revenue    = ls_existing-total_revenue + wa_flight-paymentsum.
+      MODIFY it_stats FROM ls_existing
+        TRANSPORTING total_passengers total_revenue
+        WHERE year = wa_stats-year AND month = wa_stats-month.
+    ELSE.
+      wa_stats-total_passengers = wa_flight-seatsocc.
+      wa_stats-total_revenue    = wa_flight-paymentsum.
+      APPEND wa_stats TO it_stats.
+    ENDIF.
+  ENDLOOP.
+
+  SORT it_stats BY year month.
+
+  WRITE: / '--- Monthly Flight Statistics ---'.
+  ULINE.
+  LOOP AT it_stats INTO wa_stats.
+    WRITE: / 'Month:', wa_stats-year, '-', wa_stats-month,
+           ' Passengers:', wa_stats-total_passengers,
+           ' Revenue:', wa_stats-total_revenue.
+  ENDLOOP.
+ENDFORM.
+
+*---------------------------------------------------------------------*
+* 5. View All Flights (Dump SFLIGHT Table)
+*---------------------------------------------------------------------*
+FORM view_flights.
+  DATA: it_flights TYPE TABLE OF sflight,
+        wa_flight  TYPE sflight.
+
+  SELECT * FROM sflight INTO TABLE it_flights.
+
+  IF sy-subrc <> 0.
+    WRITE: / 'No flight data found in SFLIGHT table.'.
+    EXIT.
+  ENDIF.
+
+  WRITE: / '--- All Rows from SFLIGHT ---'.
+  ULINE.
+  WRITE: / 'CARRID', 10 'CONNID', 20 'FLDATE',
+           35 'PRICE', 50 'SEATSOCC', 65 'SEATSMAX'.
+  ULINE.
+
+  LOOP AT it_flights INTO wa_flight.
+    WRITE: / wa_flight-carrid,
+             10 wa_flight-connid,
+             20 wa_flight-fldate,
+             35 wa_flight-price,
+             50 wa_flight-seatsocc,
+             65 wa_flight-seatsmax.
+  ENDLOOP.
+ENDFORM.
+
+
+*---------------------------------------------------------------------*
+* START-OF-SELECTION
+*---------------------------------------------------------------------*
+START-OF-SELECTION.
+  IF r1 = 'X'.
+    PERFORM flight_analyzer.
+  ELSEIF r2 = 'X'.
+    PERFORM flight_checker.
+  ELSEIF r3 = 'X'.
+    PERFORM top5_flights.
+  ELSEIF r4 = 'X'.
+    PERFORM monthly_stats.
+  ELSEIF r5 = 'X'.
+    PERFORM view_flights.
+  ENDIF.
