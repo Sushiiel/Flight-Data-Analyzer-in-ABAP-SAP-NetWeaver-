@@ -13,7 +13,7 @@ A custom ABAP report built on the **SAP NetWeaver AS ABAP 7.52 trial system** us
 - Open SQL, Internal Tables, Selection-Screen Programming
 
 ## Screenshots
-![Selection Screen](screenshots/01_selection.png)
+![Selection Screen](images/All_rows.png)
 ![Analyzer Output](screenshots/02_output_analyzer.png)
 
 ## How to Run
