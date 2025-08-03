@@ -13,8 +13,18 @@ A custom ABAP report built on the **SAP NetWeaver AS ABAP 7.52 trial system** us
 - Open SQL, Internal Tables, Selection-Screen Programming
 
 ## Screenshots
+- Table Contents
 ![Selection Screen](images/All_rows.png)
-![Analyzer Output](screenshots/02_output_analyzer.png)
+- Revenue Details
+![Revenue](images/Revenue.png)
+- Availability Check
+![Analyzer Output](images/Availablity.png)
+- Booking Analyzer
+![Analyzer Output](images/Booking_Analyzer.png)
+- Monthly Status
+![Analyzer Output](images/Monthly_Flight_Statistic.png)
+- UI Layout
+![Analyzer Output](images/UI.png)
 
 ## How to Run
 1. Copy code from `ZFLIGHT_PROJECT.abap` into SAP GUI (SE38).
